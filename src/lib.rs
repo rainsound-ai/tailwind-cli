@@ -153,4 +153,23 @@ mod tests {
         println!("Expected version: {}", &expected_version);
         assert!(stdout.contains(&expected_version));
     }
+
+    #[test]
+    fn built_css_has_expected_classes() {
+        let built_css_path = "target/built_test.css";
+
+        let _ignore_errors = std::fs::remove_file(built_css_path);
+
+        let args = vec!["--input", "src/test.css", "--output", built_css_path];
+        run(&args).expect("Couldn't run `tailwindcss`.");
+
+        let font_bold_declaration = ".font-bold {
+  font-weight: 700;
+}";
+
+        let built_css =
+            std::fs::read_to_string(built_css_path).expect("Couldn't read built CSS file.");
+
+        assert!(built_css.contains(font_bold_declaration));
+    }
 }
