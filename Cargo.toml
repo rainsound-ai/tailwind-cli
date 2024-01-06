@@ -2,6 +2,18 @@
 name = "tailwind_cli"
 version = "3.4.1-0"
 edition = "2021"
+license = "MIT"
+description = "Easily invoke the Tailwind CSS CLI from Rust code"
+homepage = "https://github.com/rainsound-ai/tailwind-cli"
+repository = "https://github.com/rainsound-ai/tailwind-cli"
+readme = "readme.md"
+keywords = ["tailwind", "css", "cli"]
+categories = [
+    "api-bindings",
+    "development-tools",
+    "development-tools::build-utils",
+    "web-programming",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
