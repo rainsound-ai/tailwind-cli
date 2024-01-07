@@ -14,11 +14,16 @@ where
     Args: IntoIterator,
     Args::Item: Into<std::ffi::OsString>,
 {
+    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+    println!("Running Tailwind CLI with args: {:?}", args);
+
     // Gotcha: Dropping this file will delete it, so we need to keep it alive.
     // Be careful about giving away ownership of this variable.
     // Details here: https://docs.rs/tempfile/latest/tempfile/#early-drop-pitfall
     let cli_executable_file = get_cli_executable_file()?;
     let path_to_cli_executable = cli_executable_file.path();
+    println!("Got CLI executable file: {:?}", path_to_cli_executable);
+    println!("Executing CLI executable...");
     let output = duct::cmd(path_to_cli_executable, args)
         .stderr_capture()
         .stdout_capture()
@@ -26,12 +31,19 @@ where
         .run()
         .map_err(TailwindCliError::CouldntInvokeTailwindCli)?;
 
+    let (stdout, stderr) = get_stdout_and_stderr_from_process_output(&output);
+
+    println!("CLI executable finished executing.");
+    println!("CLI executable stdout: {}", &stdout);
+    println!("CLI executable stderr: {}", &stderr);
+
     if !output.status.success() {
-        let (stdout, stderr) = get_stdout_and_stderr_from_process_output(&output);
+        println!("CLI executable returned an error.");
         let error = TailwindCliError::TailwindCliReturnedAnError { stdout, stderr };
         return Err(error);
     }
 
+    println!("CLI executable returned successfully.");
     let output = TailwindCliOutput::new(output);
     Ok(output)
 }
@@ -73,14 +85,21 @@ fn get_stdout_and_stderr_from_process_output(
 
 fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
     let platform = guess_platform();
+    println!("Guessed platform: {:?}", platform);
     let cli_executable_bytes = get_cli_executable_bytes(platform);
+    println!(
+        "Got CLI executable bytes: {} bytes",
+        cli_executable_bytes.len()
+    );
 
     let mut temp_file =
         NamedTempFile::new().map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+    println!("Created temporary file: {:?}", temp_file.path());
 
     temp_file
         .write_all(cli_executable_bytes)
         .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+    println!("Wrote CLI executable bytes to temporary file.");
 
     // Make the file executable. This isn't supported on Windows, so we skip it.
     #[cfg(unix)]
@@ -96,11 +115,13 @@ fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
         file_handle
             .set_permissions(permissions)
             .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+        println!("Made temporary file executable.");
     }
 
     Ok(temp_file)
 }
 
+#[derive(Debug)]
 enum Platform {
     // macOS
     MacOsArm64,
