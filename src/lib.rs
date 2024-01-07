@@ -22,7 +22,7 @@ where
     let path_to_cli_executable = get_cli_executable_file()?;
     println!("Got CLI executable file: {:?}", path_to_cli_executable);
     println!("Executing CLI executable...");
-    let output = duct::cmd(path_to_cli_executable, args)
+    let output = duct::cmd(&path_to_cli_executable, args)
         .stderr_capture()
         .stdout_capture()
         .unchecked()
@@ -34,6 +34,10 @@ where
     println!("CLI executable finished executing.");
     println!("CLI executable stdout: {}", &stdout);
     println!("CLI executable stderr: {}", &stderr);
+
+    std::fs::remove_file(path_to_cli_executable)
+        .map_err(TailwindCliError::CouldntDeleteTemporaryFile)?;
+    println!("Deleted temporary file.");
 
     if !output.status.success() {
         println!("CLI executable returned an error.");
@@ -90,7 +94,9 @@ fn get_cli_executable_file() -> Result<PathBuf, TailwindCliError> {
         cli_executable_bytes.len()
     );
 
-    let temp_file_name = format!("tailwindcss-{}-v{}", platform, CRATE_VERSION);
+    // We use a UUID in case multiple builds are running at the same time.
+    let uuid = uuid::Uuid::new_v4().to_string();
+    let temp_file_name = format!("tailwindcss-{}-v{}-{}", platform, CRATE_VERSION, uuid);
     let temp_file_path = std::env::current_dir()
         .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?
         .join("target")
@@ -208,6 +214,7 @@ pub enum TailwindCliError {
     TailwindCliReturnedAnError { stdout: String, stderr: String },
     CouldntInvokeTailwindCli(io::Error),
     CouldntSaveCliExecutableToTemporaryFile(io::Error),
+    CouldntDeleteTemporaryFile(io::Error),
 }
 
 impl Display for TailwindCliError {
@@ -226,6 +233,13 @@ impl Display for TailwindCliError {
                 write!(
                     f,
                     "Couldn't save Tailwind CLI executable to temporary file: {}",
+                    error
+                )
+            }
+            TailwindCliError::CouldntDeleteTemporaryFile(error) => {
+                write!(
+                    f,
+                    "Couldn't delete Tailwind CLI executable temporary file: {}",
                     error
                 )
             }
