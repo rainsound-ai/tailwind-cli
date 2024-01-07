@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::io;
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -16,30 +17,53 @@ where
     let output = duct::cmd(path_to_cli_executable, args)
         .stderr_capture()
         .stdout_capture()
+        .unchecked()
         .run()
-        .map(TailwindCliOutput::new)
-        .map_err(TailwindCliError::TailwindCliFailedToRun)?;
+        .map_err(TailwindCliError::CouldntInvokeTailwindCli)?;
+
+    if !output.status.success() {
+        let (stdout, stderr) = get_stdout_and_stderr_from_process_output(&output);
+        let error = TailwindCliError::TailwindCliReturnedAnError { stdout, stderr };
+        return Err(error);
+    }
+
+    let output = TailwindCliOutput::new(output);
     Ok(output)
 }
 
+#[derive(Debug)]
 pub struct TailwindCliOutput {
-    process_output: std::process::Output,
+    stdout: String,
+    stderr: String,
 }
 
 impl TailwindCliOutput {
     fn new(process_output: std::process::Output) -> Self {
-        Self { process_output }
+        let (stdout, stderr) = get_stdout_and_stderr_from_process_output(&process_output);
+        Self { stdout, stderr }
     }
 
-    pub fn stdout(&self) -> String {
-        String::from_utf8(self.process_output.stdout.clone())
-            .expect("Couldn't parse stdout as UTF-8.")
+    pub fn stdout(&self) -> &str {
+        &self.stdout
     }
 
-    pub fn stderr(&self) -> String {
-        String::from_utf8(self.process_output.stderr.clone())
-            .expect("Couldn't parse stderr as UTF-8.")
+    pub fn stderr(&self) -> &str {
+        &self.stderr
     }
+}
+
+fn get_stdout_and_stderr_from_process_output(
+    process_output: &std::process::Output,
+) -> (String, String) {
+    let stdout = String::from_utf8_lossy(&process_output.stdout)
+        .trim()
+        .to_string();
+
+    let stderr = String::from_utf8_lossy(&process_output.stderr)
+        .trim()
+        .to_string();
+
+    (stdout, stderr)
 }
 
 fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
@@ -126,9 +150,35 @@ fn get_cli_executable_bytes(platform: Platform) -> &'static [u8] {
 
 #[derive(Debug)]
 pub enum TailwindCliError {
-    TailwindCliFailedToRun(io::Error),
+    TailwindCliReturnedAnError { stdout: String, stderr: String },
+    CouldntInvokeTailwindCli(io::Error),
     CouldntSaveCliExecutableToTemporaryFile(io::Error),
 }
+
+impl Display for TailwindCliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TailwindCliError::TailwindCliReturnedAnError { stdout, stderr } => {
+                write!(f, "Tailwind CLI returned an error:\n\n")?;
+                write!(f, "stdout:\n{}\n\n", stdout)?;
+                write!(f, "stderr:\n{}\n\n", stderr)?;
+                Ok(())
+            }
+            TailwindCliError::CouldntInvokeTailwindCli(error) => {
+                write!(f, "Couldn't invoke Tailwind CLI: {}", error)
+            }
+            TailwindCliError::CouldntSaveCliExecutableToTemporaryFile(error) => {
+                write!(
+                    f,
+                    "Couldn't save Tailwind CLI executable to temporary file: {}",
+                    error
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for TailwindCliError {}
 
 #[cfg(test)]
 mod tests {
@@ -171,5 +221,30 @@ mod tests {
             std::fs::read_to_string(built_css_path).expect("Couldn't read built CSS file.");
 
         assert!(built_css.contains(font_bold_declaration));
+    }
+
+    #[test]
+    fn input_file_not_found() {
+        let built_css_path = "target/built_test.css";
+
+        let _ignore_errors = std::fs::remove_file(built_css_path);
+
+        let args = vec![
+            "--input",
+            "src/doesnt_exist.css",
+            "--output",
+            built_css_path,
+        ];
+        let result = run(&args);
+
+        if let Err(TailwindCliError::TailwindCliReturnedAnError { stdout, stderr }) = result {
+            assert!(stdout.is_empty());
+            assert!(stderr.contains("Specified input file src/doesnt_exist.css does not exist."));
+        } else {
+            panic!(
+                "Expected TailwindCliReturnedAnError error, got {:?}",
+                result
+            );
+        }
     }
 }
