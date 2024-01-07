@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "tailwind_cli"
-version = "3.4.1-0"
+version = "3.4.1-0.1.0"
 dependencies = [
  "duct",
  "include-cargo-toml",

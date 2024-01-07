@@ -1,6 +1,6 @@
 [package]
 name = "tailwind_cli"
-version = "3.4.1-0"
+version = "3.4.1-0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Easily invoke the Tailwind CSS CLI from Rust code"
