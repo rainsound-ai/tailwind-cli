@@ -1,7 +1,9 @@
 use std::fmt::Display;
 use std::io;
 use std::io::Write;
-use tempfile::NamedTempFile;
+use std::path::PathBuf;
+
+const CRATE_VERSION: &str = include_cargo_toml::include_toml!("package"."version");
 
 /// Run the Tailwind CLI with the given arguments.
 ///
@@ -17,11 +19,7 @@ where
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     println!("Running Tailwind CLI with args: {:?}", args);
 
-    // Gotcha: Dropping this file will delete it, so we need to keep it alive.
-    // Be careful about giving away ownership of this variable.
-    // Details here: https://docs.rs/tempfile/latest/tempfile/#early-drop-pitfall
-    let cli_executable_file = get_cli_executable_file()?;
-    let path_to_cli_executable = cli_executable_file.path();
+    let path_to_cli_executable = get_cli_executable_file()?;
     println!("Got CLI executable file: {:?}", path_to_cli_executable);
     println!("Executing CLI executable...");
     let output = duct::cmd(path_to_cli_executable, args)
@@ -83,18 +81,29 @@ fn get_stdout_and_stderr_from_process_output(
     (stdout, stderr)
 }
 
-fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
+fn get_cli_executable_file() -> Result<PathBuf, TailwindCliError> {
     let platform = guess_platform();
     println!("Guessed platform: {:?}", platform);
-    let cli_executable_bytes = get_cli_executable_bytes(platform);
+    let cli_executable_bytes = get_cli_executable_bytes(&platform);
     println!(
         "Got CLI executable bytes: {} bytes",
         cli_executable_bytes.len()
     );
 
-    let mut temp_file =
-        NamedTempFile::new().map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
-    println!("Created temporary file: {:?}", temp_file.path());
+    let temp_file_name = format!("tailwindcss-{}-v{}", platform, CRATE_VERSION);
+    let temp_file_path = std::env::current_dir()
+        .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?
+        .join("target")
+        .join(temp_file_name);
+
+    let mut temp_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&temp_file_path)
+        .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+    // let mut temp_file =
+    //     NamedTempFile::new().map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+    println!("Created temporary file: {:?}", &temp_file_path);
 
     temp_file
         .write_all(cli_executable_bytes)
@@ -105,20 +114,25 @@ fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let file_handle = temp_file.as_file_mut();
-        let mut permissions = file_handle
+        let mut permissions = temp_file
             .metadata()
             .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?
             .permissions();
         // 755 - owner can read/write/execute, group/others can read/execute.
         permissions.set_mode(0o755);
-        file_handle
+        temp_file
             .set_permissions(permissions)
             .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
         println!("Made temporary file executable.");
     }
 
-    Ok(temp_file)
+    // Make sure the file is closed and written to disk.
+    temp_file
+        .sync_all()
+        .map_err(TailwindCliError::CouldntSaveCliExecutableToTemporaryFile)?;
+    drop(temp_file);
+
+    Ok(temp_file_path)
 }
 
 #[derive(Debug)]
@@ -135,6 +149,21 @@ enum Platform {
     // Windows
     WindowsArm64,
     WindowsX64,
+}
+
+impl std::fmt::Display for Platform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Platform::MacOsArm64 => "macos-arm64",
+            Platform::MacOsX64 => "macos-x64",
+            Platform::LinuxArm64 => "linux-arm64",
+            Platform::LinuxArmv7 => "linux-armv7",
+            Platform::LinuxX64 => "linux-x64",
+            Platform::WindowsArm64 => "windows-arm64",
+            Platform::WindowsX64 => "windows-x64",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 fn guess_platform() -> Platform {
@@ -162,7 +191,7 @@ fn guess_platform() -> Platform {
     }
 }
 
-fn get_cli_executable_bytes(platform: Platform) -> &'static [u8] {
+fn get_cli_executable_bytes(platform: &Platform) -> &'static [u8] {
     match platform {
         Platform::MacOsArm64 => include_bytes!("./tailwindcss-macos-arm64"),
         Platform::MacOsX64 => include_bytes!("./tailwindcss-macos-x64"),
@@ -208,7 +237,6 @@ impl std::error::Error for TailwindCliError {}
 
 #[cfg(test)]
 mod tests {
-    const CRATE_VERSION: &str = include_cargo_toml::include_toml!("package"."version");
 
     use super::*;
 
@@ -232,11 +260,11 @@ mod tests {
 
     #[test]
     fn built_css_has_expected_classes() {
-        let built_css_path = "target/built_test.css";
+        let built_css_path = "target/built.css";
 
         let _ignore_errors = std::fs::remove_file(built_css_path);
 
-        let args = vec!["--input", "src/test.css", "--output", built_css_path];
+        let args = vec!["--input", "src/main.css", "--output", built_css_path];
         run(&args).expect("Couldn't run `tailwindcss`.");
 
         let font_bold_declaration = ".font-bold {
@@ -251,7 +279,7 @@ mod tests {
 
     #[test]
     fn input_file_not_found() {
-        let built_css_path = "target/built_test.css";
+        let built_css_path = "target/built.css";
 
         let _ignore_errors = std::fs::remove_file(built_css_path);
 
