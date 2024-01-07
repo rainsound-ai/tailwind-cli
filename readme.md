@@ -2,6 +2,8 @@
 
 A library that makes it trivial to invoke the [Tailwind CSS CLI](https://tailwindcss.com/docs/installation) from your Rust code. Useful for running Tailwind in [build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html), among other things.
 
+This crate _doesn't_ package the Tailwind CLI as a binary, so it's not a good fit for, say, using `cargo install` to install the Tailwind CLI. If that's a feature you're interested in, please open an issue.
+
 ```rust
 // build.rs
 
