@@ -1,6 +1,6 @@
 # Tailwind CLI
 
-A library that makes it trivial to invoke the [Tailwind CSS CLI](https://tailwindcss.com/docs/installation) from your Rust code. Useful for running Tailwind in [build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html).
+A library that makes it trivial to invoke the [Tailwind CSS CLI](https://tailwindcss.com/docs/installation) from your Rust code. Useful for running Tailwind in [build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html), among other things.
 
 ```rust
 // build.rs
@@ -20,7 +20,22 @@ fn main() {
         "target/built.css",
     ];
 
-    tailwind_cli::run(&args);
+    match tailwind_cli::run(&args) {
+        Ok(output) => {
+            println!("Tailwind CLI completed.");
+            println!("stdout:\n{}", output.stdout());
+            println!("stderr:\n{}", output.stderr());
+        },
+        Err(error) => {
+            // If we got as far as executing the CLI, `error` will
+            // contain the stdout and stderr from the process.
+            //
+            // If present, they're also included when converting the
+            // error to a string.
+            println!("Tailwind CLI failed.");
+            println!("{}", error);
+        },
+    }
 }
 ```
 

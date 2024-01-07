@@ -3,7 +3,12 @@ use std::io;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
-/// Equivalent to running `tailwindcss` in the terminal.
+/// Run the Tailwind CLI with the given arguments.
+///
+/// ```
+/// let args = vec!["--input", "src/main.css", "--output", "target/built.css"];
+/// tailwind_cli::run(args).expect("Running Tailwind CLI failed.");
+/// ```
 pub fn run<Args>(args: Args) -> Result<TailwindCliOutput, TailwindCliError>
 where
     Args: IntoIterator,
@@ -96,7 +101,7 @@ fn get_cli_executable_file() -> Result<NamedTempFile, TailwindCliError> {
     Ok(temp_file)
 }
 
-pub enum Platform {
+enum Platform {
     // macOS
     MacOsArm64,
     MacOsX64,
